@@ -14,7 +14,7 @@ float pg_point_dist(pg_point_t a, pg_point_t b)
     float dx = b.x - a.x;
     float dy = b.y - a.y;
 
-    return sqrtf(dx * dx + dy * dy);
+    return hypotf(dx, dy);
 }
 
 float pg_point_line_dist(pg_point_t p, pg_point_t a, pg_point_t b)
@@ -23,14 +23,14 @@ float pg_point_line_dist(pg_point_t p, pg_point_t a, pg_point_t b)
     float ey = b.y - a.y;
     float wx = p.x - a.x;
     float wy = p.y - a.y;
-    float chord = sqrtf(ex * ex + ey * ey);
+    float chord = hypotf(ex, ey);
 
     if (!(chord > PG_EPSILON)) {
-        return sqrtf(wx * wx + wy * wy);
+        return hypotf(wx, wy);
     }
     /* |cross(e, w)| / |e| is the perpendicular distance to the infinite
      * line through a and b. */
-    return fabsf(ex * wy - ey * wx) / chord;
+    return fabsf((ex / chord) * wy - (ey / chord) * wx);
 }
 
 bool pg_point_is_finite(pg_point_t p)
@@ -102,6 +102,11 @@ static pg_result_t pg_subdiv_emit(const pg_span_t *span, pg_span_kind_t kind,
     pg_result_t res;
     float t_mid;
 
+    /* Finite source controls can still overflow during subdivision. */
+    if (!pg_point_is_finite(span->p0) || !pg_point_is_finite(span->p1) ||
+        !pg_point_is_finite(span->p2) || !pg_point_is_finite(span->p3)) {
+        return PG_ERR_INVALID_PATH;
+    }
     if (pg_span_is_flat(span, kind, tolerance) || depth >= PG_MAX_RECURSION) {
         return on_span(ctx, span, kind, command_index);
     }

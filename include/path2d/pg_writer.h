@@ -15,14 +15,16 @@ extern "C" {
 #endif
 
 /**
- * Command sink used by path-producing operations (slices today, SVG import
- * and cache builders later).
+ * Command sink used by flattening and curve-preserving slicing.
  *
  * Every callback returns a result code so sinks can fail with
  * PG_ERR_WORKSPACE_TOO_SMALL and stop the producing operation instead of
  * silently truncating geometry. Callbacks must be called with MOVE first;
  * sinks are expected to reject a leading draw command. A writer never needs
- * a CLOSE callback: slice output is always expressed with explicit points.
+ * a CLOSE callback: current outputs express closure with explicit points.
+ * This interface does not preserve closed-topology metadata. Callbacks are
+ * synchronous, may retain partial output on failure, and must not mutate
+ * the source path or measurement workspace during an operation.
  */
 typedef struct {
     pg_result_t (*move_to)(void *ctx, pg_point_t to);

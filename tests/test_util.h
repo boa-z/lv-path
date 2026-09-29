@@ -8,6 +8,7 @@
 #ifndef TEST_UTIL_H
 #define TEST_UTIL_H
 
+#include <math.h>
 #include <stdio.h>
 
 static int tu_checks;
@@ -22,8 +23,14 @@ static int tu_failed;
         } \
     } while (0)
 
-#define TU_NEAR(a, b, eps) \
-    TU_EXPECT(!(((a) - (b) > (eps)) || ((b) - (a) > (eps))))
+/* A NaN must fail an approximate comparison, not silently pass it. */
+static inline int tu_near(double a, double b, double eps)
+{
+    return isfinite(a) && isfinite(b) && isfinite(eps) && eps >= 0.0 &&
+           fabs(a - b) <= eps;
+}
+
+#define TU_NEAR(a, b, eps) TU_EXPECT(tu_near((a), (b), (eps)))
 
 #define TU_POINT_NEAR(p, ex, ey, eps) \
     do { \

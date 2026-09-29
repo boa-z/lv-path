@@ -14,6 +14,13 @@
 extern "C" {
 #endif
 
+/**
+ * Numerical precondition for these low-level primitives: coordinates and
+ * intermediate differences/products must be representable as finite float.
+ * They have no error return; use a suitable coordinate scale. Split outputs
+ * must be distinct when both are non-NULL. NaN parameters clamp to zero.
+ */
+
 /** Quadratic Bezier control polygon. */
 typedef struct {
     pg_point_t p0; /**< Start point. */

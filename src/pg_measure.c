@@ -8,7 +8,6 @@
 #include "path2d/pg_measure.h"
 
 #include <math.h>
-#include <string.h>
 
 #include "pg_internal.h"
 
@@ -41,11 +40,20 @@ static pg_result_t pg_measure_leaf(void *ctx, const pg_span_t *span,
 {
     pg_build_t *build = ctx;
     float chord = pg_point_dist(span->p0, span->p3);
+    float next_dist;
     pg_result_t res;
 
     (void)kind;
+    if (!isfinite(chord)) {
+        return PG_ERR_INVALID_PATH;
+    }
     if (chord <= PG_EPSILON) {
         return PG_OK; /* truly degenerate leaf: consumes no distance */
+    }
+    next_dist = build->dist + chord;
+    /* A successful table must be finite and strictly increasing. */
+    if (!isfinite(next_dist) || !(next_dist > build->dist)) {
+        return PG_ERR_INVALID_PATH;
     }
     if (build->measure->sample_count == 0u) {
         res = pg_push(build, 0.0f, span->t0, command_index);
@@ -53,7 +61,7 @@ static pg_result_t pg_measure_leaf(void *ctx, const pg_span_t *span,
             return res;
         }
     }
-    build->dist += chord;
+    build->dist = next_dist;
     return pg_push(build, build->dist, span->t1, command_index);
 }
 
@@ -69,7 +77,7 @@ pg_result_t pg_measure_init(pg_measure_t *measure, const pg_path_t *path,
     }
     /* Fail-atomic: any failure below leaves the object zeroed (unusable)
      * instead of a partially built LUT. */
-    memset(measure, 0, sizeof(*measure));
+    *measure = (pg_measure_t){ 0 };
 
     if (path == NULL || workspace == NULL) {
         return PG_ERR_INVALID_ARG;
@@ -89,13 +97,13 @@ pg_result_t pg_measure_init(pg_measure_t *measure, const pg_path_t *path,
 
     res = pg_path_walk(path, tolerance, NULL, pg_measure_leaf, &build);
     if (res != PG_OK) {
-        memset(measure, 0, sizeof(*measure));
+        *measure = (pg_measure_t){ 0 };
         return res;
     }
     if (measure->sample_count < PG_MEASURE_MIN_SAMPLES ||
         !(build.dist > PG_EPSILON)) {
         /* MOVE-only path, or every measurably long leaf was degenerate. */
-        memset(measure, 0, sizeof(*measure));
+        *measure = (pg_measure_t){ 0 };
         return PG_ERR_DEGENERATE;
     }
     measure->total_length = build.dist;
@@ -112,12 +120,21 @@ float pg_measure_get_length(const pg_measure_t *measure)
 
 pg_point_t pg_vec_normalize(pg_point_t v)
 {
-    float norm = sqrtf(v.x * v.x + v.y * v.y);
-    pg_point_t out;
+    float scale;
+    float norm;
+    pg_point_t out = { 1.0f, 0.0f };
 
-    if (!(norm > PG_EPSILON)) {
-        out.x = 1.0f;
-        out.y = 0.0f;
+    if (!pg_point_is_finite(v)) {
+        return out;
+    }
+    scale = fmaxf(fabsf(v.x), fabsf(v.y));
+    if (scale == 0.0f) {
+        return out;
+    }
+    v.x /= scale;
+    v.y /= scale;
+    norm = hypotf(v.x, v.y);
+    if (scale <= PG_EPSILON / norm) {
         return out;
     }
     out.x = v.x / norm;
@@ -227,21 +244,27 @@ static bool pg_lut_direction(const pg_measure_t *measure, uint16_t lo,
     }
     if (lo == hi) {
         if ((uint16_t)(hi + 1u) < measure->sample_count) {
-            a = pg_sample_pos(measure, hi);
-            b = pg_sample_pos(measure, (uint16_t)(hi + 1u));
+            hi = (uint16_t)(hi + 1u);
         }
         else if (lo > 0u) {
-            a = pg_sample_pos(measure, (uint16_t)(lo - 1u));
-            b = pg_sample_pos(measure, lo);
+            lo = (uint16_t)(lo - 1u);
         }
         else {
             return false;
         }
     }
+    if (measure->samples[lo].command_index != measure->samples[hi].command_index) {
+        pg_point_t end;
+        pg_cmd_t cmd;
+
+        /* Never derive a direction from a zero-length MOVE between contours. */
+        pg_cmd_span(measure->path, measure->samples[hi].command_index,
+                     &a, &end, &cmd);
+    }
     else {
         a = pg_sample_pos(measure, lo);
-        b = pg_sample_pos(measure, hi);
     }
+    b = pg_sample_pos(measure, hi);
     if (pg_point_dist(a, b) <= PG_EPSILON) {
         return false;
     }
@@ -252,9 +275,9 @@ static bool pg_lut_direction(const pg_measure_t *measure, uint16_t lo,
 }
 
 /* Curve-evaluated position and unit tangent for a located (cmd, t) pair. */
-static void pg_located_pos_tan(const pg_measure_t *measure,
-                               const pg_locate_t *loc, pg_point_t *position,
-                               pg_point_t *tangent)
+static pg_result_t pg_located_pos_tan(const pg_measure_t *measure,
+                                      const pg_locate_t *loc, pg_point_t *position,
+                                      pg_point_t *tangent)
 {
     pg_point_t p0;
     pg_point_t end;
@@ -264,30 +287,33 @@ static void pg_located_pos_tan(const pg_measure_t *measure,
 
     pg_cmd_span(measure->path, loc->command_index, &p0, &end, &cmd);
     *position = pg_cmd_eval(&cmd, p0, end, loc->t);
+    if (!pg_point_is_finite(*position)) {
+        return PG_ERR_INVALID_PATH;
+    }
     if (tangent == NULL) {
-        return;
+        return PG_OK;
     }
     deriv = pg_cmd_deriv(&cmd, p0, end, loc->t);
-    norm = sqrtf(deriv.x * deriv.x + deriv.y * deriv.y);
-    if (norm > PG_EPSILON) {
-        tangent->x = deriv.x / norm;
-        tangent->y = deriv.y / norm;
-        return;
+    norm = hypotf(deriv.x, deriv.y);
+    if (pg_point_is_finite(deriv) && norm > PG_EPSILON) {
+        *tangent = pg_vec_normalize(deriv);
+        return PG_OK;
     }
     /* Tier 2: direction of the adjacent measurable LUT span. */
     if (pg_lut_direction(measure, loc->lo, loc->hi, tangent)) {
-        return;
+        return PG_OK;
     }
     /* Tier 3: whole-command chord. */
     deriv.x = end.x - p0.x;
     deriv.y = end.y - p0.y;
     if (pg_point_dist(p0, end) > PG_EPSILON) {
         *tangent = pg_vec_normalize(deriv);
-        return;
+        return PG_OK;
     }
     /* Tier 4: degenerate everything. */
     tangent->x = 1.0f;
     tangent->y = 0.0f;
+    return PG_OK;
 }
 
 pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
@@ -316,8 +342,7 @@ pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
     }
 
     pg_measure_locate(measure, distance, &loc);
-    pg_located_pos_tan(measure, &loc, position, tangent);
-    return PG_OK;
+    return pg_located_pos_tan(measure, &loc, position, tangent);
 }
 
 pg_result_t pg_measure_get_pos_tan_normalized(const pg_measure_t *measure,

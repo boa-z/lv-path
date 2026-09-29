@@ -19,13 +19,15 @@ extern "C" {
  * @brief Flattens a path into a move_to/line_to writer stream.
  *
  * Uses the shared subdivision engine also used by pg_measure_init(): a span
- * is accepted only when (a) no control point deviates more than `tolerance`
+ * is normally accepted when (a) no control point deviates more than `tolerance`
  * from the chord AND (b) the control-polygon length exceeds the chord by no
  * more than `tolerance`. The second condition forces subdivision of collinear
  * overshoot/backtracking curves (e.g. M(0,0) Q(100,0) (10,0)), which the
  * perpendicular test alone would flatten into a single wrong chord. Monotone
- * collinear spans still emit one chord. Truly degenerate leaves (zero chord
- * after subdivision) emit nothing.
+ * collinear spans still emit one chord. At PG_MAX_RECURSION a leaf is
+ * accepted even if the criteria are unmet. Thus tolerance is a local
+ * subdivision criterion, not a global error guarantee. Chords of length
+ * <= PG_EPSILON emit nothing.
  *
  * Output contract: one move_to per MOVE command (so contour boundaries
  * survive into the sink) followed by one line_to per flat leaf. quad_to and
@@ -41,10 +43,12 @@ extern "C" {
  * @return               PG_OK on success; PG_ERR_INVALID_ARG for NULL
  *                       path/writer/missing callbacks or a
  *                       non-finite/non-positive tolerance;
- *                       PG_ERR_INVALID_PATH for malformed paths;
+ *                       PG_ERR_INVALID_PATH for malformed/unrepresentable geometry;
  *                       otherwise the first error from the sink.
  *
- * @note No heap is used; the writer callbacks run synchronously.
+ * @note No heap is used; the writer callbacks run synchronously. On failure
+ *       the sink may hold partial output, which the caller must discard.
+ *       CLOSE becomes an explicit line; no closed-topology flag is emitted.
  */
 pg_result_t pg_path_flatten(const pg_path_t *path, float tolerance,
                             const pg_path_writer_t *writer);

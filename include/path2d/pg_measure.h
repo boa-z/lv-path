@@ -32,11 +32,12 @@ typedef struct {
 } pg_measure_sample_t;
 
 /**
- * Measurement object. Borrows both the path and the workspace: the caller
- * keeps both alive for as long as queries run.
+ * Measurement object. Borrows the path descriptor, its commands and workspace.
+ * All three must remain alive and unchanged while queries run. Treat the
+ * fields as read-only after initialization; no hidden allocation occurs.
  */
 typedef struct {
-    const pg_path_t *path;        /**< Measured path (borrowed, Flash-resident). */
+    const pg_path_t *path;        /**< Measured descriptor (borrowed; commands may be const). */
     pg_measure_sample_t *samples; /**< Caller-owned LUT workspace (borrowed). */
     uint16_t sample_count;        /**< Samples written by init. */
     uint16_t sample_capacity;     /**< Workspace capacity in samples. */
@@ -60,22 +61,24 @@ typedef struct {
  * @param[out] workspace        Caller-owned sample array (borrowed, kept).
  * @param[in]  workspace_count  Workspace capacity; below
  *                              PG_MEASURE_MIN_SAMPLES is rejected.
- *                              Capacity depends on geometry and tolerance; handle
- *                              PG_ERR_WORKSPACE_TOO_SMALL by growing the
- *                              array, never by lowering tolerance blindly.
+ *                              Required capacity depends on the geometry and
+ *                              tolerance. Handle PG_ERR_WORKSPACE_TOO_SMALL
+ *                              explicitly; no fixed capacity fits all paths.
  * @param[in]  tolerance        Flatness tolerance in path units (clamped to
  *                              >= PG_MIN_TOLERANCE).
  * @return                      PG_OK on success;
  *                              PG_ERR_INVALID_ARG for NULL pointers or a
  *                              non-finite/non-positive tolerance;
- *                              PG_ERR_INVALID_PATH for malformed paths;
+ *                              PG_ERR_INVALID_PATH for malformed paths or
+ *                              unrepresentable/non-increasing float lengths;
  *                              PG_ERR_WORKSPACE_TOO_SMALL when the table does
  *                              not fit (geometry is never truncated);
  *                              PG_ERR_DEGENERATE for MOVE-only or
  *                              zero-length paths.
  *
  * @note Fail-atomic: on any failure the object is zeroed and unusable until a
- *       successful re-init; no partial LUT survives.
+ *       successful re-init. Workspace contents may have been modified and
+ *       must not be consumed after failure.
  */
 pg_result_t pg_measure_init(pg_measure_t *measure, const pg_path_t *path,
                             pg_measure_sample_t *workspace, uint16_t workspace_count,
@@ -98,7 +101,9 @@ float pg_measure_get_length(const pg_measure_t *measure);
  * points), and the tangent comes from the curve derivative - so direction
  * stays stable even with few samples. The parameter itself is therefore an
  * approximation; the position lies on the curve but is not claimed to be the
- * exact arc-length point. distance is clamped to [0, total_length].
+ * exact arc-length point. Tolerance does not bound query error: a straight
+ * Q(0,0; 0,0; 100,0) returns x=25 at distance 50 (true position x=50).
+ * See docs/api.md. distance is clamped to [0, total_length].
  *
  * @param[in]  measure   Initialized measure. Cannot be NULL.
  * @param[in]  distance  Arc distance in path units (clamped; NaN rejected).
@@ -108,11 +113,14 @@ float pg_measure_get_length(const pg_measure_t *measure);
  * @return               PG_OK on success;
  *                       PG_ERR_INVALID_ARG for NULL measure/position, NaN
  *                       distance or an uninitialized measure;
- *                       PG_ERR_DEGENERATE if the measure holds no length.
+ *                       PG_ERR_DEGENERATE if the measure holds no length;
+ *                       PG_ERR_INVALID_PATH if evaluation is non-finite.
  *
- * @note Zero-derivative queries fall back to the command chord, then to
- *       (1, 0); results are never NaN/Inf. Cost: one endpoint walk over the
- *       commands plus O(log N) search, one evaluation, one derivative.
+ * @note Zero-derivative queries use a local sampled span in the same command,
+ *       then its chord, then (1, 0). Outputs are usable only on PG_OK.
+ *       Non-NULL position and tangent must point to distinct objects.
+ *       Cost: one endpoint walk over commands plus O(log N) search,
+ *       one evaluation and one derivative.
  */
 pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
                                    pg_point_t *position, pg_point_t *tangent);
@@ -122,14 +130,15 @@ pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
  *
  * @param[in]  measure     Initialized measure. Cannot be NULL.
  * @param[in]  normalized  Normalized distance [0.0, 1.0] (clamped;
- *                         NaN rejected). 0 maps to the path start,
- *                         1 to the path end.
+ *                         NaN rejected). 0 and 1 map to the first
+ *                         and last measurable points, excluding zero-length
+ *                         leading/trailing commands.
  * @param[out] position    Output point coordinate. Cannot be NULL.
  * @param[out] tangent     Output normalized tangent vector; may be NULL.
  * @return                 PG_OK on success, PG_ERR_INVALID_ARG for NULL
  *                         measure/position, NaN input or an uninitialized
  *                         measure, PG_ERR_DEGENERATE if the measure holds no
- *                         length.
+ *                         length; PG_ERR_INVALID_PATH for non-finite evaluation.
  *
  * @note The tangent vector is normalized (length = 1.0).
  *       In a coordinate system where +Y points down, the positive normal
@@ -154,7 +163,9 @@ pg_result_t pg_measure_get_pos_tan_normalized(const pg_measure_t *measure,
  * - start == end (after clamping): a single move_to at the located position,
  *   then PG_OK.
  * - Writer failures (typically PG_ERR_WORKSPACE_TOO_SMALL) abort the slice
- *   immediately and are propagated; geometry is never silently truncated.
+ *   immediately and are propagated. The sink may contain partial output;
+ *   discard it after any failure, even if its own callbacks succeeded.
+ * - CLOSE is emitted as an explicit line; closed-topology metadata is lost.
  *
  * @param[in] measure  Initialized measure. Cannot be NULL.
  * @param[in] start    Range start distance, path units.
@@ -185,7 +196,8 @@ pg_result_t pg_measure_slice_normalized(const pg_measure_t *measure,
 /**
  * @brief Normalizes a vector to unit length.
  *
- * @param[in] v  Input vector; the zero vector maps to (1, 0).
+ * @param[in] v  Input vector; non-finite vectors and magnitudes <= PG_EPSILON
+ *               map to (1, 0).
  * @return       Unit vector (never NaN/Inf).
  */
 pg_point_t pg_vec_normalize(pg_point_t v);

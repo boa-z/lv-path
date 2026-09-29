@@ -20,7 +20,7 @@ extern "C" {
 #define PATH2D_VERSION_MINOR 2
 #define PATH2D_VERSION_PATCH 0
 
-/** Scalar type used by all geometry (v1 is float-only by design). */
+/** Scalar type used by all geometry (float-only by design). */
 typedef float pg_float_t;
 
 /** Smallest magnitude treated as nonzero in geometric predicates. */
@@ -38,14 +38,14 @@ typedef float pg_float_t;
 typedef enum {
     PG_OK = 0,                 /**< Success. */
     PG_ERR_INVALID_ARG,        /**< NULL pointer, NaN/domain error or misuse. */
-    PG_ERR_INVALID_PATH,       /**< Structurally invalid or non-finite path. */
+    PG_ERR_INVALID_PATH,       /**< Invalid path or unrepresentable geometry. */
     PG_ERR_WORKSPACE_TOO_SMALL, /**< Caller workspace exhausted; geometry NOT truncated. */
     PG_ERR_DEGENERATE          /**< Valid structure but zero measurable length. */
 } pg_result_t;
 
 /** 2D point in caller-defined path coordinate units. */
 typedef struct {
-    pg_float_t x; /**< X coordinate (+x right). */
+    pg_float_t x; /**< X coordinate (axis orientation chosen by caller). */
     pg_float_t y; /**< Y coordinate (axis orientation chosen by caller). */
 } pg_point_t;
 

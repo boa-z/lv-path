@@ -1,97 +1,77 @@
 # lv-path
 
-Renderer-independent **C99** path geometry, without a widget, operating-system,
-rendering or heap dependency.
+A renderer-independent **C99 path geometry library** with caller-owned storage.
+No LVGL headers, widgets, operating system, allocator hooks, or runtime heap
+allocation are required by the core.
+
+**Status:** useful standalone geometry, ready for an exploratory design discussion,
+but not ready for an upstream merge or a stable 1.0 contract. In particular,
+distance-to-parameter interpolation has no accuracy bound; see the explicit
+counterexample in [API contracts](docs/api.md#distance-query-accuracy).
 
 ## Scope
 
-- M/L/Q/C/Close validation and borrowed immutable paths.
-- Quadratic/cubic Bezier evaluation, derivatives and subdivision.
-- Adaptive flattening and arc-length lookup tables.
-- Position/tangent/normal queries by distance or normalized distance.
+- Immutable, borrowed M/L/Q/C/Close command sequences and validation.
+- Quadratic/cubic Bezier evaluation, derivatives, and De Casteljau splitting.
+- Adaptive flattening and approximate arc-length lookup tables.
+- Approximate position/unit tangent queries by absolute or normalized distance;
+  normal rotation from a tangent.
 - Curve-preserving slices and fixed-capacity command writers.
 
-Coordinates and units belong to the caller. Rendering lives in clients.
+No widget, rendering engine, SVG parser, GPU interface, tessellator, or
+application-specific state is included. Bounding boxes are intentionally deferred
+pending agreement about overlap with LVGL's existing path facilities.
 
-## Build and test
+## Build and use
 
-CMake 3.16+ and a C99 compiler are required. No downloads are performed.
+CMake 3.16+ and a C99 compiler are sufficient. The build downloads nothing.
 
-    cmake -S . -B build
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     cmake --build build
     ctest --test-dir build --output-on-failure
 
-Use add_subdirectory(path/to/lv-path) and link lv_path::lv_path.
-Non-CMake users compile the seven src/pg_*.c files, add include/ to the
-header path and link the platform math library when required.
-LV_PATH_BUILD_TESTS defaults off in subprojects. Development flags are private:
-LV_PATH_STRICT_WARNINGS and LV_PATH_SANITIZE (host ASan/UBSan).
+Link the CMake target `lv_path::lv_path` after `add_subdirectory(path/to/lv-path)`.
+Without CMake, compile the seven `src/pg_*.c` files, add `include/` to the include
+path, and link the platform math library when needed. The implementation requires
+C99 math functions including `hypotf` and `fmaxf`; it is not a math-library-free
+freestanding implementation.
 
-Public headers remain path2d/pg_*.h, with unchanged pg_* types/functions
-and PG_* macros. path2d::path2d is a compatibility CMake alias.
-PATH2D_VERSION_* macros retain the geometry API version.
+`LV_PATH_BUILD_TESTS` and `LV_PATH_BUILD_EXAMPLES` default on for a standalone
+build and off as a subproject. `LV_PATH_STRICT_WARNINGS` enables private strict
+warnings; `LV_PATH_SANITIZE` enables host ASan/UBSan. Do not use fast-math options
+that discard NaN/Inf semantics. C++ consumers can include the public headers,
+but the implementation is C99.
 
-## Memory and numerical contracts
+Start with the complete, compiled [API example](examples/path_queries.c). It
+checks every result and demonstrates measurement, position/tangent/normal,
+slicing, and flattening using fixed arrays. Run `build/path_queries` (append
+`.exe` on Windows); success returns zero without console output.
 
-Paths borrow caller commands, which may reside in Flash. Measurement and
-writers use caller-provided storage; exhaustion returns an error instead of
-truncating geometry. No malloc/free hooks or allocator are required.
-Subdivision uses bounded recursion (PG_MAX_RECURSION, default 12); target
-stack usage still needs measurement. Queries allocate nothing.
+## Contracts and design
 
-Single-precision float is used throughout. Arc length and distance-to-parameter
-mapping are approximate; positions are evaluated on the original curve.
-Tolerance is clamped by PG_MIN_TOLERANCE and work bounded by recursion depth.
-This is not an exact arc-length solver. Tangents retain the existing
-analytic/local-span/chord/(1,0) fallback. The positive normal is (-t.y,t.x).
+Paths borrow command arrays, which may be read-only. Measures additionally borrow
+the path descriptor and sample workspace. Keep all of them alive and unchanged
+until the last query. All output storage belongs to the caller. A failed measure
+initialization clears the object; workspace contents are unspecified. A failed
+writer operation may leave partial output, which must be discarded.
 
-Multiple contours contribute to one distance domain with zero-length jumps.
-Exact contour joints resolve to the later command at t=0. Writers and
-flatteners emit MOVE at contour boundaries. Read-only queries may share an
-immutable prepared measure; mutation and storage lifetimes are caller-managed.
+Geometry uses single-precision float and caller-defined coordinates. Recursion is
+bounded by `PG_MAX_RECURSION` (default 12); this bounds depth, not a proven target
+stack size. Tolerance is a per-leaf subdivision criterion, not a global geometric
+or distance-query error guarantee. No mandatory heap is used, but target stack,
+libm cost, and worst-case execution time still require measurement.
 
-## Quick start
+- [Architecture and dependencies](docs/architecture.md)
+- [API and memory contracts](docs/api.md)
+- [Design rationale and LVGL vector overlap](docs/design-rationale.md)
+- [Upstream readiness and next milestone](docs/upstream-readiness.md)
+- [Tests and host benchmark](docs/benchmarks.md)
+- [Compatibility and migration notes](docs/migration.md)
 
-
-```c
-#include "path2d/pg_path.h"
-#include "path2d/pg_measure.h"
-
-static const pg_cmd_t path_cmds[] = {
-    PG_MOVE_TO(0.0f, 0.0f),
-    PG_CUBIC_TO(0.0f, 100.0f, 100.0f, 100.0f, 100.0f, 0.0f),
-};
-static const pg_path_t path = { path_cmds, PG_ARRAY_SIZE(path_cmds) };
-
-static pg_measure_sample_t workspace[128];
-pg_measure_t m;
-
-if (pg_measure_init(&m, &path, workspace, 128, 0.5f) != PG_OK) {
-    /* PG_ERR_WORKSPACE_TOO_SMALL / PG_ERR_DEGENERATE / ... */
-}
-
-pg_point_t pos, tan;
-pg_measure_get_pos_tan_normalized(&m, 0.53f, &pos, &tan);
-/* tan may be NULL when only the position is needed. */
-```
-
-Extracting a sub-range keeps the original curve degree:
-
-```c
-#include "path2d/pg_writer.h"
-
-static pg_cmd_t slice_cmds[16];
-pg_path_buffer_t buffer;
-pg_path_t slice;
-
-pg_path_buffer_init(&buffer, slice_cmds, PG_ARRAY_SIZE(slice_cmds));
-pg_path_writer_t writer = pg_path_buffer_writer(&buffer);
-
-if (pg_measure_slice_normalized(&m, 0.2f, 0.8f, &writer) != PG_OK) {
-    /* writer overflow: the buffer is poisoned, buffer.failure holds the code */
-}
-pg_path_buffer_to_path(&buffer, &slice);
-```
+Public names remain `pg_*` / `PG_*` (path geometry), with headers under `path2d/`.
+The compatibility target `path2d::path2d` and `PATH2D_VERSION_*` macros remain.
+This review preserves signatures and layouts; upstream naming and a stable binary
+ABI have not been agreed. See the versioning policy in the API document.
 
 ## License
 

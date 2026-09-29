@@ -30,7 +30,7 @@ static void pg_quad_range(pg_quad_t quad, float t0, float t1, pg_quad_t *out)
     else {
         head = quad;
     }
-    u = (t1 > PG_EPSILON) ? (t0 / t1) : 0.0f;
+    u = (t1 > 0.0f) ? (t0 / t1) : 0.0f;
     if (u > 0.0f) {
         pg_quad_split(head.p0, head.p1, head.p2, u, NULL, out);
     }
@@ -53,7 +53,7 @@ static void pg_cubic_range(pg_cubic_t cubic, float t0, float t1,
     else {
         head = cubic;
     }
-    u = (t1 > PG_EPSILON) ? (t0 / t1) : 0.0f;
+    u = (t1 > 0.0f) ? (t0 / t1) : 0.0f;
     if (u > 0.0f) {
         pg_cubic_split(head.p0, head.p1, head.p2, head.p3, u, NULL, out);
     }
@@ -205,6 +205,10 @@ pg_result_t pg_measure_slice_normalized(const pg_measure_t *measure,
                                         const pg_path_writer_t *writer)
 {
     if (measure == NULL) {
+        return PG_ERR_INVALID_ARG;
+    }
+    if (measure->samples == NULL || measure->path == NULL ||
+        measure->sample_count < PG_MEASURE_MIN_SAMPLES) {
         return PG_ERR_INVALID_ARG;
     }
     if (isnan(start) || isnan(end)) {

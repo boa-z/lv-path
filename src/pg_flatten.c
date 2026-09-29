@@ -7,6 +7,8 @@
  */
 #include "path2d/pg_flatten.h"
 
+#include <math.h>
+
 #include "pg_internal.h"
 
 typedef struct {
@@ -27,10 +29,14 @@ static pg_result_t pg_flat_leaf(void *ctx, const pg_span_t *span,
                                 pg_span_kind_t kind, uint16_t command_index)
 {
     pg_flat_t *flat = ctx;
+    float chord = pg_point_dist(span->p0, span->p3);
 
     (void)kind;
     (void)command_index;
-    if (pg_point_dist(span->p0, span->p3) <= PG_EPSILON) {
+    if (!isfinite(chord)) {
+        return PG_ERR_INVALID_PATH;
+    }
+    if (chord <= PG_EPSILON) {
         return PG_OK;
     }
     return flat->writer->line_to(flat->writer->ctx, span->p3);
