@@ -43,10 +43,10 @@ typedef enum {
     PG_ERR_DEGENERATE          /**< Valid structure but zero measurable length. */
 } pg_result_t;
 
-/** 2D point in path coordinate units (pixels on target). */
+/** 2D point in caller-defined path coordinate units. */
 typedef struct {
     pg_float_t x; /**< X coordinate (+x right). */
-    pg_float_t y; /**< Y coordinate (+y down, LVGL screen convention). */
+    pg_float_t y; /**< Y coordinate (axis orientation chosen by caller). */
 } pg_point_t;
 
 /** Path command opcodes. */

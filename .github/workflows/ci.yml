@@ -1,0 +1,21 @@
+name: geometry
+on: [push, pull_request]
+jobs:
+  geometry:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        sanitize: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure C99
+        env:
+          CC: ${{ matrix.compiler }}
+        run: cmake -S . -B build -DLV_PATH_SANITIZE=${{ matrix.sanitize }}
+      - run: cmake --build build --parallel 4
+      - run: ctest --test-dir build --output-on-failure
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1

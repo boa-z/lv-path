@@ -132,7 +132,7 @@ pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
  *                         length.
  *
  * @note The tangent vector is normalized (length = 1.0).
- *       In LVGL's coordinate system (+Y is down), the positive normal
+ *       In a coordinate system where +Y points down, the positive normal
  *       (-t.y, t.x) points to the "right" side of the forward direction.
  */
 pg_result_t pg_measure_get_pos_tan_normalized(const pg_measure_t *measure,
