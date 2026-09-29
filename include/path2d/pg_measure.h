@@ -22,8 +22,9 @@ extern "C" {
  * One arc-length table entry.
  *
  * Samples are strictly increasing in distance. Consecutive samples either
- * belong to one command (t interpolates inside it) or form a contour joint
- * (the later sample starts a new command whose local span begins at t = 0).
+ * belong to one command or straddle a command boundary. In the latter case,
+ * the high sample owns the queried span; its initial parameter is t = 0.
+ * Boundaries may include zero-length MOVE jumps between separate contours.
  */
 typedef struct {
     float distance;         /**< Cumulative arc length at this sample, path units. */
@@ -87,8 +88,10 @@ pg_result_t pg_measure_init(pg_measure_t *measure, const pg_path_t *path,
 /**
  * @brief Returns the total arc length of an initialized measure.
  *
- * @param[in] measure  Initialized measure; NULL yields 0.0f.
- * @return             Total length in path units (0.0f if unusable).
+ * @param[in] measure  Initialized or zeroed measure; NULL yields 0.0f.
+ * @return             Stored total length (zero after failed initialization).
+ *
+ * @note This getter does not validate state. Do not pass uninitialized storage.
  */
 float pg_measure_get_length(const pg_measure_t *measure);
 
@@ -153,7 +156,7 @@ pg_result_t pg_measure_get_pos_tan_normalized(const pg_measure_t *measure,
  * @brief Extracts the arc-length range [start, end] into a writer.
  *
  * Curves are restricted with De Casteljau range extraction, keeping their
- * original degree (never a polyline substitute). Straight pieces collapse to
+ * original degree (never a polyline substitute). LINE/CLOSE pieces use
  * line_to calls. Subpath breaks appear as additional move_to calls, so a
  * slice spanning multiple subpaths never draws a connecting jump line.
  *

@@ -59,3 +59,10 @@ control-hull bounds require a use case and agreed semantics. No SVG parser,
 renderer, GPU/tessellation support, allocator framework, widget, or product state
 is in scope. A measurement accuracy correction is the next core issue, not an
 excuse to grow the rendering surface.
+
+## Discussion material
+
+The [upstream proposal](upstream-proposal.md) compares integration options and
+lists questions for maintainers. Its current-behavior references are the
+[geometry contract](geometry-contract.md) and [embedded review](embedded-engineering.md).
+It proposes no public rename, rendering backend or new library operation.

@@ -47,6 +47,11 @@ checks every result and demonstrates measurement, position/tangent/normal,
 slicing, and flattening using fixed arrays. Run `build/path_queries` (append
 `.exe` on Windows); success returns zero without console output.
 
+The [path-motion example](examples/README.md#point-moving-along-a-path) advances a
+point along a curve and writes 121 time/position/direction samples as CSV. Run
+build/path_motion > motion.csv (append .exe on Windows). It demonstrates generic
+motion using existing queries, with explicit distance-accuracy limitations.
+
 ## Contracts and design
 
 Paths borrow command arrays, which may be read-only. Measures additionally borrow
@@ -62,7 +67,10 @@ or distance-query error guarantee. No mandatory heap is used, but target stack,
 libm cost, and worst-case execution time still require measurement.
 
 - [Architecture and dependencies](docs/architecture.md)
-- [API and memory contracts](docs/api.md)
+- [API review and memory contracts](docs/api.md)
+- [Geometry guarantees and limitations](docs/geometry-contract.md)
+- [Embedded storage, stack and math review](docs/embedded-engineering.md)
+- [Draft LVGL discussion proposal](docs/upstream-proposal.md)
 - [Design rationale and LVGL vector overlap](docs/design-rationale.md)
 - [Upstream readiness and next milestone](docs/upstream-readiness.md)
 - [Tests and host benchmark](docs/benchmarks.md)

@@ -20,6 +20,35 @@ length; repeated and disconnected contours share one cumulative distance domain.
 Validation checks structure and consumed coordinates, not every possible future
 floating-point intermediate or sufficient workspace.
 
+## API review decisions (2026-09-29)
+
+This follow-up preserves every public declaration and adds no library entry point.
+Generic pg (path geometry) names describe commands, measurements, Beziers and
+writers; there is no widget, display or application state. The path2d header
+prefix and compatibility target remain to avoid a rename without maintainer input.
+
+| Area | Decision / boundary |
+| --- | --- |
+| Ownership | Keep borrowed immutable input and caller-owned workspace; descriptor lifetime matters as much as array lifetime |
+| Exposed structs | Retain static-allocation layouts; callers treat bookkeeping as read-only; discuss opacity/ABI before 1.0 |
+| Scalar/count types | Keep float and uint16_t; neither arbitrary precision nor unlimited capacity is implied |
+| Result codes | Keep existing enum; detected numeric-range failure uses PG_ERR_INVALID_PATH |
+| Getter behavior | pg_measure_get_length has no status and does not validate its argument; use after successful init, or with NULL/a zeroed object (length zero) |
+| Low-level helpers | Bezier primitives require finite intermediates and have no status; they are not checked path operations |
+| Writers | Synchronous non-owning sinks; errors can expose a partial prefix; CLOSE metadata is not retained |
+| API growth | No new renderer, path format, allocator, precision option, bounds API or upstream namespace |
+
+Return values depend on the operation. A MOVE-only path is structurally valid and
+flattening can successfully emit its MOVE, but measurement returns PG_ERR_DEGENERATE.
+NULL workspace is PG_ERR_INVALID_ARG; non-NULL workspace below two samples is
+PG_ERR_WORKSPACE_TOO_SMALL. An empty buffer cannot be exported (PG_ERR_INVALID_PATH).
+Result strings are diagnostic; use enum values for logic and check each operation's
+contract. No guarantee is made about which error wins when several inputs are invalid.
+
+[Geometry contract](geometry-contract.md) separates flatness, length and query
+accuracy. [Embedded engineering](embedded-engineering.md) covers buffer and stack
+budgets. Neither document expands the public API.
+
 ## Ownership and lifetime
 
 1. The caller owns the command array and `pg_path_t` descriptor. Commands may be

@@ -1,8 +1,8 @@
 # Upstream readiness review
 
 Review date: 2026-09-29. Scope: standalone path geometry.
-Evidence below describes this working-tree revision, not an upstream-accepted or
-published release. See [benchmark/validation details](benchmarks.md).
+The initial review accompanies the numeric-hardening implementation. Its host evidence does not
+constitute an upstream-accepted design or a versioned release. See [benchmark/validation details](benchmarks.md).
 
 ## Assessment
 
@@ -58,7 +58,7 @@ current parameter interpolation can have large error even on straight curves.
 - **Broader robustness:** extreme-range Bezier intermediate behavior, randomized
   fuzzing, allocation-free target link checks and toolchains beyond the two tested
   Windows hosts remain work. CI defines Linux GCC/Clang sanitizer jobs; this review
-  has not observed a new remote CI run for the uncommitted revision.
+  does not claim a new remote CI result for this follow-up.
 - **Community/provenance:** confirm maintainer interest, contribution conventions,
   license/authorship review and a minimal upstream patch shape. Retained MIT
   headers/history are evidence, not a declaration of community approval.
@@ -73,3 +73,30 @@ failure/reporting when bounded resources cannot meet it. Preserve the no-heap
 contract, rerun geometry regressions, and capture target stack/time/workspace.
 Then bring a small design note with the comparison to LVGL's current vector path
 API to maintainers before choosing final names or writing an adapter.
+
+## Discussion-material follow-up (2026-09-29)
+
+This documentation follow-up preserves the reviewed core code and public declarations.
+It records [API review decisions](api.md#api-review-decisions-2026-09-29), separates
+[geometry guarantees](geometry-contract.md) from [embedded resource budgets](embedded-engineering.md),
+and adds a generic [motion example](../examples/README.md#point-moving-along-a-path).
+The [discussion proposal](upstream-proposal.md) compares three integration options
+and makes the accuracy/target-evidence gaps explicit. No adapter is implemented.
+
+There is no technical blocker to an honest exploratory conversation if these
+limits accompany the example. Before presenting a merge-ready contribution,
+resolve distance inversion/error reporting, agree representation/ownership with
+maintainers, and collect embedded resource evidence. No community outreach has
+been performed by this task.
+
+Follow-up validation on 2026-09-29:
+
+- GCC 16.1.0 strict C99 Release: 11/11 CTest cases passed, including the new example.
+- Clang 22.1.8 Debug with ASan/UBSan: 11/11 CTest cases passed.
+- The 121 CSV rows were independently checked for finite values, time/requested
+  distance progression, endpoints, unit tangents, orthogonal normals, and proximity
+  to the analytic cubic locus. This checks output consistency, not arc-distance accuracy.
+- Public header declaration/macro tokens match the preceding review; core source files are
+  unchanged. Local documentation links and git diff whitespace checks passed.
+- No new target-board, rendered-UI or remote-CI acceptance
+  is claimed. This task adds a host example and documentation only.
