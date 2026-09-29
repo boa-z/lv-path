@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT
  * Copyright (c) 2026 boa-z
  * Emit a point's motion along a curve as CSV. No renderer or timer is needed.
- * Equal requested distances do not guarantee constant physical speed; see
+ * Distance approximation, float and direction limits are described in
  * docs/geometry-contract.md and examples/README.md.
  */
 #include "path2d/pg_measure.h"
@@ -10,7 +10,7 @@
 
 #define MOTION_STEPS 120u
 #define MOTION_SECONDS 2.0f
-#define SAMPLE_CAPACITY 128u
+#define SAMPLE_CAPACITY 256u
 
 /* One continuous cubic contour, in caller-defined coordinate units. */
 static const pg_cmd_t commands[] = {

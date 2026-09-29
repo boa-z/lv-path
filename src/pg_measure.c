@@ -14,6 +14,7 @@
 typedef struct {
     pg_measure_t *measure; /**< Target object being built. */
     float dist;            /**< Running arc length. */
+    float compensation;    /**< Kahan summation correction (no extra workspace). */
 } pg_build_t;
 
 static pg_result_t pg_push(pg_build_t *build, float dist, float t,
@@ -41,20 +42,23 @@ static pg_result_t pg_measure_leaf(void *ctx, const pg_span_t *span,
     pg_build_t *build = ctx;
     float chord = pg_point_dist(span->p0, span->p3);
     float next_dist;
+    float increment;
     pg_result_t res;
 
     (void)kind;
     if (!isfinite(chord)) {
         return PG_ERR_INVALID_PATH;
     }
-    if (chord <= PG_EPSILON) {
+    if (chord == 0.0f) {
         return PG_OK; /* truly degenerate leaf: consumes no distance */
     }
-    next_dist = build->dist + chord;
+    increment = chord - build->compensation;
+    next_dist = build->dist + increment;
     /* A successful table must be finite and strictly increasing. */
     if (!isfinite(next_dist) || !(next_dist > build->dist)) {
         return PG_ERR_INVALID_PATH;
     }
+    build->compensation = (next_dist - build->dist) - increment;
     if (build->measure->sample_count == 0u) {
         res = pg_push(build, 0.0f, span->t0, command_index);
         if (res != PG_OK) {
@@ -94,8 +98,9 @@ pg_result_t pg_measure_init(pg_measure_t *measure, const pg_path_t *path,
     measure->sample_capacity = workspace_count;
     build.measure = measure;
     build.dist = 0.0f;
+    build.compensation = 0.0f;
 
-    res = pg_path_walk(path, tolerance, NULL, pg_measure_leaf, &build);
+    res = pg_path_walk_measure(path, tolerance, pg_measure_leaf, &build);
     if (res != PG_OK) {
         *measure = (pg_measure_t){ 0 };
         return res;

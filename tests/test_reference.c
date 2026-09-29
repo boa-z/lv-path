@@ -118,9 +118,8 @@ static void check_curve(unsigned degree) {
             double error = hypot(position.x - current.x, position.y - current.y);
             if (error > max_query_error)
                 max_query_error = error;
-            /* This seeded corpus has <0.5-unit error; tolerance is NOT a
-             * distance-query error bound. See the explicit counterexample. */
-            TU_EXPECT(error < 0.5);
+            /* Normalized-query budget plus corpus-specific roundoff allowance. */
+            TU_EXPECT(error <= 0.005 + 0.0001);
         }
         TU_NEAR(hypot(tangent.x, tangent.y), 1.0, 2e-6);
         normal = pg_tangent_to_normal(tangent);
@@ -130,20 +129,18 @@ static void check_curve(unsigned degree) {
 static void nonuniform_parameter_regression(void) {
     const pg_cmd_t commands[] = {PG_MOVE_TO(0, 0), PG_QUAD_TO(0, 0, 100, 0)};
     const pg_path_t path = {commands, PG_ARRAY_SIZE(commands)};
-    pg_measure_sample_t samples[8];
+    static pg_measure_sample_t samples[4097];
     pg_measure_t measure;
     pg_point_t position;
-    pg_result_t result = pg_measure_init(&measure, &path, samples, 8, 0.0001f);
+    pg_result_t result = pg_measure_init(&measure, &path, samples, PG_ARRAY_SIZE(samples), 0.0001f);
     TU_EXPECT(result == PG_OK);
     if (result != PG_OK)
         return;
     TU_NEAR(measure.total_length, 100.0, 1e-5);
     result = pg_measure_get_pos_tan(&measure, 50.0f, &position, NULL);
     TU_EXPECT(result == PG_OK);
-    /* Known limitation: straight geometry has two LUT samples, so t=0.5.
-     * B(0.5)=25 although the true half-length point is 50. Keep this visible
-     * until a separately reviewed distance-inversion change replaces it. */
-    TU_NEAR(position.x, 25.0, 1e-5);
+    /* Geometric flatness must not hide nonlinear parameter speed. */
+    TU_NEAR(position.x, 50.0, 0.0001);
 }
 int main(void) {
     unsigned i;

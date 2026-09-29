@@ -1,26 +1,24 @@
 # Upstream readiness review
 
 Review date: 2026-09-29. Scope: standalone path geometry.
-The initial review accompanies the numeric-hardening implementation. Its host evidence does not
-constitute an upstream-accepted design or a versioned release. See [benchmark/validation details](benchmarks.md).
+The review now includes bounded distance-query accuracy and adversarial host tests. Its host evidence does not constitute an upstream-accepted design or a versioned release. See [benchmark/validation details](benchmarks.md).
 
 ## Assessment
 
 **Suitable for an exploratory LVGL design discussion; not ready for a merge-ready
 proposal or stable 1.0 API.** The dependency boundary is clean and the library
-builds independently. The largest remaining issue is the distance-query contract:
-current parameter interpolation can have large error even on straight curves.
+builds independently. The main remaining work is target-scale evidence and maintainer review of the distance-query budget.
 
 | Area | Finding |
 | --- | --- |
-| LVGL independence | All seven core C files build without LVGL; no widget/OS/allocator dependencies in headers or source |
+| LVGL independence | All core C files build without LVGL; no widget/OS/allocator dependencies in headers or source |
 | Application scope | No application-specific exported types/state; removed stale application sizing language from public comments |
 | Naming | Generic pg (path geometry) names; legacy path2d include/target names retained compatibly |
 | Memory | Caller-owned commands, descriptor, samples and sink; no direct heap calls; lifetime/failure rules documented |
 | C portability | C99 strict GCC and Clang builds; public headers separately compile as C99 and C++11 |
 | Algorithms | Existing tests plus fixed-seed independent double-reference and targeted regression coverage |
 | API stability | Signatures/layouts unchanged in this review; no frozen 1.0 ABI or upstream naming agreement |
-| Accuracy | Local flatness and approximate length; distance-query accuracy and recursion-limit reporting remain unresolved |
+| Accuracy | Explicit T/4, 3T/4 and T exact-arithmetic budgets; float-scale qualification and target evidence remain |
 | Integration | No upstream LVGL adapter or target-board acceptance claimed |
 
 ## Corrections made
@@ -42,37 +40,26 @@ current parameter interpolation can have large error even on straight curves.
 
 ## Gaps before a formal proposal
 
-- **Distance inversion:** M(0,0) Q(0,0) (100,0), length 100, currently gives x=25 at
-  distance 50; the correct half-distance position is x=50. Flatness refinement
-  alone does not solve this. Slicing endpoints inherit the issue. The explicit
-  regression documents it; passing that regression is not acceptance of accuracy.
-- **Accuracy contracts:** choose geometric/length/query error semantics, behavior
-  at the recursion cap, cusp direction conventions and appropriate scale limits.
-  A bounded, no-heap correction should preserve explicit workspace failures.
+- **Target evidence:** collect MCU stack high-water marks, code size, libm cost,
+  worst-case latency and workspace for an identified target. Host sanitizer and
+  benchmark results do not establish those properties.
 - **Representation and ABI:** discuss reuse of LVGL point/path conventions,
   closed-path topology, exposed structs, uint16_t limits, namespace and versioning.
   Avoid adding parallel representations without maintainer buy-in.
-- **Embedded evidence:** collect actual MCU stack high-water marks, worst-case
-  workspace/latency, code size and math-library cost. Host benchmarks and sanitizers
-  do not establish those properties. No board was flashed for this review.
-- **Broader robustness:** extreme-range Bezier intermediate behavior, randomized
-  fuzzing, allocation-free target link checks and toolchains beyond the two tested
-  Windows hosts remain work. CI defines Linux GCC/Clang sanitizer jobs; this review
-  does not claim a new remote CI result for this follow-up.
+- **Numerical scope:** validate the exact-arithmetic budget against target-scale
+  float behavior and agree whether the appended convergence error is sufficient.
+- **Broader robustness:** extreme-range intermediate behavior, randomized fuzzing,
+  allocation-free target linking and toolchains beyond the two tested hosts remain.
 - **Community/provenance:** confirm maintainer interest, contribution conventions,
-  license/authorship review and a minimal upstream patch shape. Retained MIT
-  headers/history are evidence, not a declaration of community approval.
+  license/authorship review and a minimal upstream patch shape.
 
 ## Recommended next milestone
 
-Prepare a **distance-query accuracy and integration-contract milestone** before
-expanding scope. Agree a measurable query-error criterion; correct the nonuniform
-straight-curve counterexample and test curves with cusps, loops, overshoot and
-several coordinate scales against an independent numerical reference. Define
-failure/reporting when bounded resources cannot meet it. Preserve the no-heap
-contract, rerun geometry regressions, and capture target stack/time/workspace.
-Then bring a small design note with the comparison to LVGL's current vector path
-API to maintainers before choosing final names or writing an adapter.
+Prepare a **target evidence and integration-contract milestone**. The host accuracy
+model and adversarial regression corpus are now in place. Collect MCU stack,
+code-size, libm and latency evidence; review the T budget and error enum with LVGL
+maintainers; then decide whether to adapt existing LVGL path storage or keep an
+optional standalone component.
 
 ## Discussion-material follow-up (2026-09-29)
 

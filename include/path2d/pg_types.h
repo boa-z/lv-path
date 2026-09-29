@@ -31,7 +31,7 @@ typedef float pg_float_t;
 #define PG_MAX_RECURSION 12
 #endif
 
-/** Flatten tolerances below this are clamped up to bound subdivision work. */
+/** Requested flatten/measure tolerances below this use this effective value. */
 #define PG_MIN_TOLERANCE 1e-4f
 
 /** Operation outcome codes. */
@@ -40,7 +40,8 @@ typedef enum {
     PG_ERR_INVALID_ARG,        /**< NULL pointer, NaN/domain error or misuse. */
     PG_ERR_INVALID_PATH,       /**< Invalid path or unrepresentable geometry. */
     PG_ERR_WORKSPACE_TOO_SMALL, /**< Caller workspace exhausted; geometry NOT truncated. */
-    PG_ERR_DEGENERATE          /**< Valid structure but zero measurable length. */
+    PG_ERR_DEGENERATE,         /**< Valid structure but zero measurable length. */
+    PG_ERR_TOLERANCE_NOT_MET   /**< Measurement depth limit reached before convergence. */
 } pg_result_t;
 
 /** 2D point in caller-defined path coordinate units. */

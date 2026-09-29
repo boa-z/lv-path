@@ -90,12 +90,84 @@ static bool pg_span_is_flat(const pg_span_t *span, pg_span_kind_t kind,
     return perp <= tolerance && excess <= tolerance;
 }
 
-/**
- * Recursively bisects a span with De Casteljau until it is flat enough (or
- * the PG_MAX_RECURSION bound is reached) and forwards every leaf span.
- */
+/* Bounds for measurement, in the leaf's local u=[0,1] coordinates.
+ * c = endpoint chord vector, D_i = Bezier derivative control vectors.
+ * max |D_i-c| bounds |speed(u)-|c|| by convexity and reverse triangle
+ * inequality. Thus the local arc-distance interpolation error is bounded
+ * even for a geometrically straight curve with nonlinear parameter speed.
+ * Polygon excess bounds length lost by replacing this leaf with its chord.
+ * See docs/geometry-contract.md for the path-wide budget and roundoff limits. */
+typedef struct {
+    float excess;
+    float compensation;
+} pg_length_error_t;
+
+static bool pg_span_measure_ready(const pg_span_t *span, pg_span_kind_t kind,
+                                  float tolerance, pg_length_error_t *error)
+{
+    pg_point_t points[4];
+    pg_point_t chord_vector;
+    float chord, excess = 0.0f, speed_error = 0.0f;
+    unsigned degree, i;
+
+    if (kind == PG_SPAN_LINE) {
+        return true;
+    }
+    degree = kind == PG_SPAN_QUAD ? 2u : 3u;
+    points[0] = span->p0;
+    points[1] = span->p1;
+    points[2] = degree == 2u ? span->p3 : span->p2;
+    points[3] = span->p3;
+    chord_vector.x = span->p3.x - span->p0.x;
+    chord_vector.y = span->p3.y - span->p0.y;
+    chord = hypotf(chord_vector.x, chord_vector.y);
+    if (!isfinite(chord)) {
+        return false;
+    }
+    for (i = 0; i < degree; ++i) {
+        float ex = points[i + 1u].x - points[i].x;
+        float ey = points[i + 1u].y - points[i].y;
+        float edge = hypotf(ex, ey);
+        float deviation = hypotf((float)degree * ex - chord_vector.x,
+                                  (float)degree * ey - chord_vector.y);
+        float gap = edge;
+
+        if (!isfinite(edge) || !isfinite(deviation)) {
+            return false;
+        }
+        if (deviation > speed_error) {
+            speed_error = deviation;
+        }
+        if (chord > 0.0f) {
+            float ux = chord_vector.x / chord;
+            float uy = chord_vector.y / chord;
+            float projection = ex * ux + ey * uy;
+            float cross = ex * uy - ey * ux;
+
+            /* edge-projection, rationalized to avoid subtracting nearly
+             * equal lengths. Multiply after division to avoid cross^2. */
+            gap = projection > 0.0f
+                ? (cross / edge) * cross / (1.0f + projection / edge)
+                : edge - projection;
+        }
+        excess += gap;
+    }
+    /* A nonconstant closed leaf must be split, never dropped from the LUT. */
+    if (isfinite(excess) && (chord > 0.0f || excess == 0.0f) &&
+        speed_error <= tolerance * 0.5f) {
+        float increment = excess - error->compensation;
+        float next = error->excess + increment;
+        error->compensation = (next - error->excess) - increment;
+        error->excess = next;
+        return true;
+    }
+    return false;
+}
+
+/* NULL selects the original flattening policy. Measurement accumulates the
+ * accepted leaves' length bounds; preflight refines until their sum fits. */
 static pg_result_t pg_subdiv_emit(const pg_span_t *span, pg_span_kind_t kind,
-                                  float tolerance, pg_span_fn on_span,
+                                  float tolerance, pg_length_error_t *error, pg_span_fn on_span,
                                   void *ctx, uint16_t command_index,
                                   unsigned depth)
 {
@@ -107,8 +179,13 @@ static pg_result_t pg_subdiv_emit(const pg_span_t *span, pg_span_kind_t kind,
         !pg_point_is_finite(span->p2) || !pg_point_is_finite(span->p3)) {
         return PG_ERR_INVALID_PATH;
     }
-    if (pg_span_is_flat(span, kind, tolerance) || depth >= PG_MAX_RECURSION) {
+    if (error != NULL
+            ? pg_span_measure_ready(span, kind, tolerance, error)
+            : pg_span_is_flat(span, kind, tolerance) || depth >= PG_MAX_RECURSION) {
         return on_span(ctx, span, kind, command_index);
+    }
+    if (depth >= PG_MAX_RECURSION) {
+        return PG_ERR_TOLERANCE_NOT_MET;
     }
     t_mid = (span->t0 + span->t1) * 0.5f;
     if (kind == PG_SPAN_QUAD) {
@@ -122,12 +199,12 @@ static pg_result_t pg_subdiv_emit(const pg_span_t *span, pg_span_kind_t kind,
                                  span->t0, t_mid };
         right_span = (pg_span_t){ right.p0, right.p1, right.p2, right.p2,
                                   t_mid, span->t1 };
-        res = pg_subdiv_emit(&left_span, kind, tolerance, on_span, ctx,
+        res = pg_subdiv_emit(&left_span, kind, tolerance, error, on_span, ctx,
                              command_index, depth + 1u);
         if (res != PG_OK) {
             return res;
         }
-        return pg_subdiv_emit(&right_span, kind, tolerance, on_span, ctx,
+        return pg_subdiv_emit(&right_span, kind, tolerance, error, on_span, ctx,
                               command_index, depth + 1u);
     }
     {
@@ -142,18 +219,19 @@ static pg_result_t pg_subdiv_emit(const pg_span_t *span, pg_span_kind_t kind,
                                  span->t0, t_mid };
         right_span = (pg_span_t){ right.p0, right.p1, right.p2, right.p3,
                                   t_mid, span->t1 };
-        res = pg_subdiv_emit(&left_span, kind, tolerance, on_span, ctx,
+        res = pg_subdiv_emit(&left_span, kind, tolerance, error, on_span, ctx,
                              command_index, depth + 1u);
         if (res != PG_OK) {
             return res;
         }
-        return pg_subdiv_emit(&right_span, kind, tolerance, on_span, ctx,
+        return pg_subdiv_emit(&right_span, kind, tolerance, error, on_span, ctx,
                               command_index, depth + 1u);
     }
 }
 
-pg_result_t pg_path_walk(const pg_path_t *path, float tolerance,
-                         pg_move_fn on_move, pg_span_fn on_span, void *ctx)
+static pg_result_t pg_path_walk_impl(const pg_path_t *path, float tolerance,
+                                     pg_move_fn on_move, pg_span_fn on_span,
+                                     void *ctx, pg_length_error_t *error)
 {
     pg_point_t cursor = { 0.0f, 0.0f };
     pg_point_t start = { 0.0f, 0.0f };
@@ -169,7 +247,7 @@ pg_result_t pg_path_walk(const pg_path_t *path, float tolerance,
     if (!isfinite(tolerance) || !(tolerance > 0.0f)) {
         return PG_ERR_INVALID_ARG;
     }
-    if (tolerance < PG_MIN_TOLERANCE) {
+    if (error == NULL && tolerance < PG_MIN_TOLERANCE) {
         tolerance = PG_MIN_TOLERANCE;
     }
     res = pg_path_validate(path);
@@ -227,11 +305,61 @@ pg_result_t pg_path_walk(const pg_path_t *path, float tolerance,
         res = pg_subdiv_emit(&span, cmd->type == PG_CMD_CUBIC ? PG_SPAN_CUBIC
                                 : cmd->type == PG_CMD_QUAD ? PG_SPAN_QUAD
                                                            : PG_SPAN_LINE,
-                             tolerance, on_span, ctx, i, 0u);
+                             tolerance, error, on_span, ctx, i, 0u);
         if (res != PG_OK) {
             return res;
         }
         cursor = span.p3;
     }
     return PG_OK;
+}
+
+pg_result_t pg_path_walk(const pg_path_t *path, float tolerance,
+                         pg_move_fn on_move, pg_span_fn on_span, void *ctx)
+{
+    return pg_path_walk_impl(path, tolerance, on_move, on_span, ctx, NULL);
+}
+
+static pg_result_t pg_measure_preflight(void *ctx, const pg_span_t *span,
+                                        pg_span_kind_t kind, uint16_t index)
+{
+    (void)ctx;
+    (void)kind;
+    (void)index;
+    return isfinite(pg_point_dist(span->p0, span->p3)) ? PG_OK : PG_ERR_INVALID_PATH;
+}
+
+pg_result_t pg_path_walk_measure(const pg_path_t *path, float tolerance,
+                                 pg_span_fn on_span, void *ctx)
+{
+    pg_length_error_t error;
+    pg_result_t res;
+    float local_tolerance;
+    unsigned attempt;
+
+    if (!isfinite(tolerance) || !(tolerance > 0.0f) || on_span == NULL) {
+        return PG_ERR_INVALID_ARG;
+    }
+    tolerance = fmaxf(tolerance, PG_MIN_TOLERANCE);
+    local_tolerance = tolerance;
+    /* No samples are written until preflight establishes the total budget.
+     * Halving this local bound refines parameter speed as well as length.
+     * The finite retry cap is additional to the per-walk depth cap. */
+    for (attempt = 0u; attempt <= 2u * PG_MAX_RECURSION; ++attempt) {
+        error = (pg_length_error_t){0};
+        res = pg_path_walk_impl(path, local_tolerance, NULL,
+                                pg_measure_preflight, NULL, &error);
+        if (res != PG_OK) {
+            return res;
+        }
+        if (!isfinite(error.excess)) {
+            return PG_ERR_INVALID_PATH;
+        }
+        if (error.excess <= tolerance * 0.25f) {
+            error = (pg_length_error_t){0};
+            return pg_path_walk_impl(path, local_tolerance, NULL, on_span, ctx, &error);
+        }
+        local_tolerance *= 0.5f;
+    }
+    return PG_ERR_TOLERANCE_NOT_MET;
 }

@@ -48,9 +48,13 @@ typedef struct {
 /**
  * @brief Builds the arc-length lookup table into caller workspace.
  *
- * Walks the commands with the shared adaptive subdivision engine, records
- * (distance, t, command_index) samples for every flat leaf and sums the leaf
- * chords. Multi-subpath semantics: MOVEs only move the cursor, a MOVE to the
+ * Bounds local distance interpolation error and preflights whole-path length
+ * error before recording (distance, t, command_index) samples. Measurement has
+ * stricter acceptance than flattening. In exact arithmetic, length error is
+ * <= T/4 and absolute-query arc residual <= 3T/4, where T is the effective
+ * tolerance. Float roundoff is additional, not certified by this API; see
+ * docs/geometry-contract.md for derivation, limits and resource costs.
+ * Multi-subpath semantics: MOVEs only move the cursor, a MOVE to the
  * current position is a no-op, and all subpaths contribute to one continuous
  * distance (the jump itself has zero length). Zero-length prefixes (e.g.
  * L(0,0) before the first real span) produce no samples, so they never
@@ -65,7 +69,7 @@ typedef struct {
  *                              Required capacity depends on the geometry and
  *                              tolerance. Handle PG_ERR_WORKSPACE_TOO_SMALL
  *                              explicitly; no fixed capacity fits all paths.
- * @param[in]  tolerance        Flatness tolerance in path units (clamped to
+ * @param[in]  tolerance        Approximation budget in path units (clamped to
  *                              >= PG_MIN_TOLERANCE).
  * @return                      PG_OK on success;
  *                              PG_ERR_INVALID_ARG for NULL pointers or a
@@ -74,6 +78,8 @@ typedef struct {
  *                              unrepresentable/non-increasing float lengths;
  *                              PG_ERR_WORKSPACE_TOO_SMALL when the table does
  *                              not fit (geometry is never truncated);
+ *                              PG_ERR_TOLERANCE_NOT_MET when bounded depth or
+ *                              preflight refinement cannot meet the budget;
  *                              PG_ERR_DEGENERATE for MOVE-only or
  *                              zero-length paths.
  *
@@ -103,10 +109,11 @@ float pg_measure_get_length(const pg_measure_t *measure);
  * evaluating the ORIGINAL curve at that parameter (not by interpolating LUT
  * points), and the tangent comes from the curve derivative - so direction
  * stays stable even with few samples. The parameter itself is therefore an
- * approximation; the position lies on the curve but is not claimed to be the
- * exact arc-length point. Tolerance does not bound query error: a straight
- * Q(0,0; 0,0; 100,0) returns x=25 at distance 50 (true position x=50).
- * See docs/api.md. distance is clamped to [0, total_length].
+ * approximation. Cumulative arc residual is <= 3T/4 in exact arithmetic;
+ * float roundoff is additional. This also bounds position error on a continuous
+ * contour, but not across MOVE discontinuities. See docs/geometry-contract.md.
+ * distance is clamped to [0, total_length]. No tangent angular-error or exact
+ * physical-speed guarantee is made.
  *
  * @param[in]  measure   Initialized measure. Cannot be NULL.
  * @param[in]  distance  Arc distance in path units (clamped; NaN rejected).
@@ -130,6 +137,9 @@ pg_result_t pg_measure_get_pos_tan(const pg_measure_t *measure, float distance,
 
 /**
  * @brief Returns the curve position and unit tangent at a normalized distance.
+ *
+ * Arc residual relative to normalized true length is <= T in exact arithmetic;
+ * float rounding is additional. See docs/geometry-contract.md.
  *
  * @param[in]  measure     Initialized measure. Cannot be NULL.
  * @param[in]  normalized  Normalized distance [0.0, 1.0] (clamped;

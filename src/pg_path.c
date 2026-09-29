@@ -22,6 +22,8 @@ const char *pg_result_str(pg_result_t result)
         return "PG_ERR_WORKSPACE_TOO_SMALL";
     case PG_ERR_DEGENERATE:
         return "PG_ERR_DEGENERATE";
+    case PG_ERR_TOLERANCE_NOT_MET:
+        return "PG_ERR_TOLERANCE_NOT_MET";
     default:
         return "PG_ERR_UNKNOWN";
     }

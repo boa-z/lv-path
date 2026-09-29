@@ -117,10 +117,10 @@ static void final_contour_tangent(void) {
         PG_QUAD_TO(0, 100, 0, 100),
     };
     const pg_path_t path = {commands, PG_ARRAY_SIZE(commands)};
-    pg_measure_sample_t samples[16];
+    pg_measure_sample_t samples[256];
     pg_measure_t measure;
     pg_point_t position, tangent;
-    TU_EXPECT(pg_measure_init(&measure, &path, samples, 16, 0.1f) == PG_OK);
+    TU_EXPECT(pg_measure_init(&measure, &path, samples, 256, 0.1f) == PG_OK);
     TU_EXPECT(pg_measure_get_pos_tan(&measure, 200.0f, &position, &tangent) == PG_OK);
     TU_NEAR(tangent.x, 0.0f, 1e-6f);
     TU_NEAR(tangent.y, 1.0f, 1e-6f);

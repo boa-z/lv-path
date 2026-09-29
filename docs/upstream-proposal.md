@@ -76,13 +76,12 @@ to importing the complete repository.
 
 ## Known limitations accompanying this draft
 
-- **Distance inversion has no accuracy bound.** M(0,0) Q(0,0) (100,0) has length
-  100, but distance 50 returns x=25 instead of x=50. Linear t interpolation causes
-  this; lowering flatness tolerance does not fix it. Slicing inherits it. The
-  regression records the defect, not acceptance of that accuracy.
-- **Tolerance is local.** Chord deviation/control-polygon excess guide subdivision.
-  At the depth cap, leaves can be accepted without meeting them. No cap-status or
-  global geometric/length error guarantee exists.
+- **Distance inversion is approximate within a documented budget.** The straight
+  quadratic half-distance query returns x=50. Derivative-speed subdivision and
+  whole-path preflight enforce the exact-arithmetic contract; float-scale and
+  target evidence still need maintainer review.
+- **Flattening is local.** Its depth-cap behavior remains separate from measurement.
+  Measurement reports PG_ERR_TOLERANCE_NOT_MET instead of returning a partial table.
 - **Direction and closure need agreement.** Corners/cusps use documented fallback
   conventions; MOVE can cause position jumps. Writer output loses CLOSE metadata,
   which matters to a renderer's closed joins versus open caps.

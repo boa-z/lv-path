@@ -5,9 +5,8 @@ No LVGL headers, widgets, operating system, allocator hooks, or runtime heap
 allocation are required by the core.
 
 **Status:** useful standalone geometry, ready for an exploratory design discussion,
-but not ready for an upstream merge or a stable 1.0 contract. In particular,
-distance-to-parameter interpolation has no accuracy bound; see the explicit
-counterexample in [API contracts](docs/api.md#distance-query-accuracy).
+but not ready for an upstream merge or a stable 1.0 contract. Distance-query
+approximation is covered by measurable semantics in [API contracts](docs/api.md#distance-query-accuracy).
 
 ## Scope
 
@@ -48,7 +47,8 @@ slicing, and flattening using fixed arrays. Run `build/path_queries` (append
 `.exe` on Windows); success returns zero without console output.
 
 The [path-motion example](examples/README.md#point-moving-along-a-path) advances a
-point along a curve and writes 121 time/position/direction samples as CSV. Run
+point along a curve and writes 121 time/position/direction samples as CSV. The
+optional host visualization is [path-motion.gif](docs/media/path-motion.gif). Run
 build/path_motion > motion.csv (append .exe on Windows). It demonstrates generic
 motion using existing queries, with explicit distance-accuracy limitations.
 

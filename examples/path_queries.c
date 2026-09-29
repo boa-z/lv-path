@@ -10,7 +10,7 @@ static const pg_cmd_t commands[] = {
     PG_CUBIC_TO(60.0f, -25.0f, 90.0f, 25.0f, 100.0f, 0.0f),
 };
 static const pg_path_t path = {commands, PG_ARRAY_SIZE(commands)};
-static pg_measure_sample_t samples[128];
+static pg_measure_sample_t samples[256];
 static pg_cmd_t output_commands[128];
 
 int main(void) {

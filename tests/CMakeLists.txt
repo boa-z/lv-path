@@ -1,5 +1,5 @@
 # Standalone geometry tests and benchmark.
-foreach(t bezier path flatten measure writer slice regressions reference)
+foreach(t bezier path flatten measure writer slice regressions reference accuracy)
     add_executable(test_${t} test_${t}.c)
     target_link_libraries(test_${t} PRIVATE lv_path::lv_path lv_path_dev_flags)
     target_include_directories(test_${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -30,7 +30,7 @@ its output. There is no cleanup call or ownership transfer.
 
 ## No mandatory heap
 
-The seven core C files make no allocator calls, install no allocator callbacks,
+The core C files make no allocator calls, install no allocator callbacks,
 and allocate no hidden command list or cache. Exhaustion returns an error and
 never triggers a heap fallback. A consumer may choose dynamic storage outside
 the core contract.
@@ -55,7 +55,7 @@ padding, program code, application state and runtime overhead. Moving arrays
 from automatic to static storage shifts their cost from stack to static RAM;
 it does not reduce total RAM.
 
-For the motion example, N=128 and C=2; no output array or frame history is kept.
+For the motion example, N=256 and C=2; no output array or frame history is kept.
 On the previously checked x86-64 ABI, a sample occupies 12 bytes, so the array is
 1536 bytes. Re-evaluate sizeof for the target. That capacity fits its tested
 curve/tolerance; it is not a recommendation for every path.

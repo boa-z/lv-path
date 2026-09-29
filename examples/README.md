@@ -26,7 +26,7 @@ it under build/Release. CSV goes to stdout, errors to stderr. Exit zero means
 the complete stream was written. Discard output on failure: it may contain a
 header or prefix of rows.
 
-The client measures once, keeps a 128-entry static sample array, and computes
+The client measures once, keeps a 256-entry static sample array, and computes
 requested_distance = measured_length * elapsed_time / duration. It retains no
 frame history and uses no sleep or animation scheduler. A real client supplies
 elapsed time and uses the queried position as object state. Tangent supplies a
@@ -49,7 +49,11 @@ Example output checkpoints (GCC host run; final digits may vary):
 | Simulated time (s) | Requested distance | Position (x, y) |
 | ---: | ---: | --- |
 | 0.000000 | 0.000000 | (0.000000, 0.000000) |
-| 1.000000 | 95.128159 | (60.000000, 60.000000) |
-| 2.000000 | 190.256317 | (120.000000, 0.000000) |
+| 1.000000 | 95.147041 | (60.000000, 60.000000) |
+| 2.000000 | 190.294083 | (120.000000, 0.000000) |
 
 These sample positions illustrate the traversal, not an arc-distance error bound.
+
+## GIF visualization
+
+`docs/media/path-motion.gif` is generated from the compiled `path_motion` CSV by the optional host-only `tools/export_path_motion.py` script. It contains 61 frames over a 3-second looping presentation, with two seconds of simulated motion and endpoint pauses. Pillow is not a library or target dependency.

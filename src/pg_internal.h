@@ -83,6 +83,11 @@ typedef pg_result_t (*pg_move_fn)(void *ctx, pg_point_t to);
 pg_result_t pg_path_walk(const pg_path_t *path, float tolerance,
                          pg_move_fn on_move, pg_span_fn on_span, void *ctx);
 
+/* Measurement uses a path-wide length budget and a per-leaf speed bound.
+ * Unlike flattening, reaching the depth cap without convergence is an error. */
+pg_result_t pg_path_walk_measure(const pg_path_t *path, float tolerance,
+                                 pg_span_fn on_span, void *ctx);
+
 /** @brief Euclidean distance between two points. */
 float pg_point_dist(pg_point_t a, pg_point_t b);
 

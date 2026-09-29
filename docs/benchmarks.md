@@ -7,13 +7,13 @@ These are recorded local host results, not remote CI or MCU acceptance.
 
 | Check | Result |
 | --- | --- |
-| GCC 16.1.0, MinGW x86-64 UCRT, Release (-O3 -DNDEBUG), strict C99 warnings | 10/10 CTest cases passed |
-| Clang 22.1.8, MSYS2 clang64, Debug, ASan + UBSan, halt_on_error=1 | 10/10 CTest cases passed |
+| GCC 16.1.0, MinGW x86-64 UCRT, Release (-O3 -DNDEBUG), strict C99 warnings | 12/12 CTest cases passed |
+| Clang 22.1.8, MSYS2 clang64, Debug, ASan + UBSan, halt_on_error=1 | 12/12 CTest cases passed |
 | Public header self-containment | Six independent C99 translation units built by both toolchains |
 | C++ interoperability | Six separate C++11 header compile/link/run checks with G++ passed |
 | Core archive dependency inspection | External non-pg symbols in GCC archive: fmaxf and hypotf; no allocator, LVGL or OS symbols |
 
-The ten CTest entries are eight geometry suites, the API example and the host
+The twelve CTest entries are nine geometry suites, the API example and the host
 benchmark. The reference suite runs 16,524 checks over 48 deterministic curves
 (24 quadratic, 24 cubic), using independent double Bernstein evaluation and
 4096-segment reference lengths. It checks splits, lengths, sampled position
@@ -23,11 +23,11 @@ length, disconnected-contour tangents, tiny-parameter slices and invalid state.
 Existing suites cover command validation, workspace exhaustion, loops,
 backtracking, contour breaks, slice reconstruction and writer failures.
 
-Reference-test envelopes describe only that bounded corpus. The maximum sampled
-position error was 0.376839 path units at 0.005 subdivision tolerance; the test
-allows <0.5. A separate explicit straight-curve counterexample records a 25-unit
-half-distance error. These are **known limitations**, not general accuracy
-bounds. See [the API accuracy discussion](api.md#distance-query-accuracy).
+The reference-test envelopes describe only their bounded corpus. The accuracy
+suite adds 110,085 checks over quadratics/cubics, cusps, loops, retracing,
+repeated contours and scale ranges; its allowances include explicit float/oracle
+terms and are not universal certificates. The straight half-distance regression
+now returns x=50. See [the API accuracy discussion](api.md#distance-query-accuracy).
 
 CTest sanitizer success is evidence for exercised cases, not a proof of memory
 safety for arbitrary inputs. No rendered-UI, upstream LVGL integration, or board validation is claimed.

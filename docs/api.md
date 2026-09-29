@@ -78,6 +78,7 @@ there is no universal fixed array size and no automatic allocation retry.
 | `PG_ERR_INVALID_PATH` | Malformed/non-finite input or detected unrepresentable geometry/length |
 | `PG_ERR_WORKSPACE_TOO_SMALL` | Caller storage exhausted; operation failed rather than silently succeeding with truncation |
 | `PG_ERR_DEGENERATE` | Valid input has no measurable length |
+| `PG_ERR_TOLERANCE_NOT_MET` | Measurement depth/preflight could not meet the requested budget |
 
 On failed measure initialization, a non-NULL measure is reset to an unusable zero
 state. Its sample workspace may have been partially overwritten. On query error,
@@ -109,23 +110,25 @@ curves; their endpoints inherit the distance-query approximation.
 
 ## Distance-query accuracy
 
-The subdivision criteria control chord deviation and control-polygon excess,
-not the linearity of distance with curve parameter. LUT interpolation therefore
-has **no error bound derived from tolerance**. Even an exact total length does
-not imply an accurate point at a requested distance.
+Measurement has a measurable contract in [geometry-contract.md](geometry-contract.md).
+With effective tolerance T = max(requested tolerance, PG_MIN_TOLERANCE), successful
+initialization guarantees in exact arithmetic: LUT prefix/total chord loss <= T/4,
+absolute query arc residual <= 3T/4, and normalized query residual <= T.
+Floating-point rounding is additional and scale dependent. On continuous contours
+this bounds Euclidean position; a disconnected MOVE can jump spatially.
+`PG_ERR_TOLERANCE_NOT_MET` reports depth/preflight failure without a partial measure.
+Workspace exhaustion remains `PG_ERR_WORKSPACE_TOO_SMALL`.
 
-Counterexample, covered by `nonuniform_parameter_regression`:
+The regression is corrected:
 
     M(0,0) Q(0,0) (100,0)
     total length = 100
-    query at distance 50 -> current result (25,0)
-    true half-length point = (50,0)
+    query at distance 50 -> (50,0) within the requested contract
 
-The straight curve produces only endpoint samples and interpolates t=0.5, while
-B(t)=100*t*t. Lowering flatness tolerance does not fix this. The regression
-records existing behavior so a future correction is deliberate; it is **not an
-accuracy acceptance test**. Resolve distance inversion before promising a stable
-point-at-distance contract upstream.
+Measurement checks parameter-speed variation using derivative control vectors,
+subdivides straight but nonuniform Beziers, and preflights control-polygon length
+error. Flattening keeps its independent local policy. Tangents remain a direction
+convention at cusps/corners; no angular or exact-speed guarantee is made.
 
 ## Numerical range and limits
 
